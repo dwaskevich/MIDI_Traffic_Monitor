@@ -209,7 +209,7 @@ void ui_scroll_history(int16_t delta)
 
 	if(0 == capture_session.midi_total_count) /* History is empty ... no midi packets received yet, just report message */
 	{
-		display_string("History empty", 1, 0, White, true);
+		display_string("History is empty", 3, 0, White, true);
 		return;
 		/* TODO - use TIM4 to replace "History empty" with "Waiting ..." */
 	}
@@ -452,4 +452,9 @@ void ui_draw_scroll_bar(float height, float position, ScrollBarDimensionType dim
 	}
 
 	ssd1306_UpdateScreen();
+}
+
+bool ui_is_capture_active(void)
+{
+    return capture_session.is_capture_active;
 }

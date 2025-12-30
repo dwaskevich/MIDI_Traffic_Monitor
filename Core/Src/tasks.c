@@ -20,8 +20,24 @@ extern volatile bool timeoutFlag;
 
 // Task implementation
 
-void heartbeat(void) {
+void heartbeat(void)
+{
 	HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+
+	/* animate "Waiting ..." message on oled display */
+	char temp[5];
+	if(false == ui_is_capture_active()) /* "Waiting" screen is active */
+	{
+		static uint16_t counter = 0;
+		uint8_t i;
+		for(i = 0; i <= counter % 3; i++)
+		{
+			temp[i] = '.';
+		}
+		temp[i] = '\0';
+		counter++;
+		display_string(temp, 1, 8, White, true);
+	}
 }
 
 void read_encoders(void)

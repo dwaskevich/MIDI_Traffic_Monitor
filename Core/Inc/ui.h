@@ -46,6 +46,6 @@ void ui_set_scroll_direction_indicator(ScrollDirection scroll_direction);
 ScrollDirection ui_get_scroll_direction_indicator(void);
 void ui_jump_to_oldest(void);
 void ui_draw_scroll_bar(float height, float position, ScrollBarDimensionType dimension_type, SSD1306_COLOR color, bool rollover_indicator);
-
+bool ui_is_capture_active(void);
 
 #endif /* INC_UI_H_ */

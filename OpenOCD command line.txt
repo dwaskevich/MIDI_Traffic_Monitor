@@ -1,0 +1,1 @@
+openocd -s C:\OpenOCD-20251211-0.12.0\share\openocd\scripts -f bluepill.cfg -c "transport select swd"

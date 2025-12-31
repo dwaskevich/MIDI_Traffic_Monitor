@@ -26,32 +26,35 @@ static uint8_t display_mode = LIVE;
 void display_init(void)
 {
   ssd1306_Init();
-  line_height = DISPLAY_DEFAULT_FONT.height;
+  line_height = DISPLAY_DEFAULT_FONT.height + 1;
   chars_per_line = SSD1306_WIDTH / DISPLAY_DEFAULT_FONT.width;
   number_lines = (SSD1306_HEIGHT / DISPLAY_DEFAULT_FONT.height);
 }
 
 void display_splash_screen()
 {
+  ssd1306_FillRectangle(0, 0, SSD1306_WIDTH, 14, White);
+  ssd1306_FillRectangle(2, 3, 125, 11, Black);
+  ssd1306_SetCursor(4, 4);
   ssd1306_WriteString(hello_world_str, DISPLAY_DEFAULT_FONT, White);
   line_number = DISPLAY_DEFAULT_FONT.height * 2;
-  ssd1306_SetCursor(1, line_number);
+  ssd1306_SetCursor(3, 20);
   ssd1306_WriteString("SSD1306 OLED 128x64", DISPLAY_DEFAULT_FONT, White);
   sprintf(print_buffer, "Font -> H=%d, W=%d", DISPLAY_DEFAULT_FONT.height, DISPLAY_DEFAULT_FONT.width);
   line_number = DISPLAY_DEFAULT_FONT.height * 3 + 1;
-  ssd1306_SetCursor(1, line_number);
+  ssd1306_SetCursor(3, 29);
   ssd1306_WriteString(print_buffer, DISPLAY_DEFAULT_FONT, White);
   sprintf(print_buffer, "Characters/line = %d", chars_per_line);
   line_number = DISPLAY_DEFAULT_FONT.height * 4 + 2;
-  ssd1306_SetCursor(1, line_number);
+  ssd1306_SetCursor(3, 38);
   ssd1306_WriteString(print_buffer, DISPLAY_DEFAULT_FONT, White);
   sprintf(print_buffer, "Number of lines = %d", number_lines);
   line_number = DISPLAY_DEFAULT_FONT.height * 5 + 3;
-  ssd1306_SetCursor(1, line_number);
+  ssd1306_SetCursor(3, 47);
   ssd1306_WriteString(print_buffer, DISPLAY_DEFAULT_FONT, White);
   sprintf(print_buffer, "MIDI history = %d", NUMBER_PAGES );
   line_number = DISPLAY_DEFAULT_FONT.height * 6 + 4;
-  ssd1306_SetCursor(1, line_number);
+  ssd1306_SetCursor(3, 56);
   ssd1306_WriteString(print_buffer, DISPLAY_DEFAULT_FONT, White);
 
   ssd1306_UpdateScreen();

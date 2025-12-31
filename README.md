@@ -33,6 +33,12 @@ A real-time MIDI packet monitor and visualizer for the STM32F103C8T6 "Blue Pill"
 
 ---
 
+## STM32 Blue Pill Pinout Configuration
+
+![alt text](image-1.png)
+
+---
+
 ## Project Structure
 
 MIDI_Traffic_Monitor/

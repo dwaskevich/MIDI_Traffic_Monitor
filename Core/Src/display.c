@@ -72,7 +72,7 @@ void display_start_screen(void)
   display_status(LIVE, 0, 0, DOWN);
   ssd1306_Line((STATUS_LINE_STATUS_WIDTH + 1) * DISPLAY_DEFAULT_FONT.width, 0, (STATUS_LINE_STATUS_WIDTH + 1) * DISPLAY_DEFAULT_FONT.width, DISPLAY_DEFAULT_FONT.height - 2, White);
   display_channel(filter_getChannel());
-  display_string("Waiting ...", 1, 0, White, true);
+  display_string("Waiting .......", 1, 0, White, true);
 }
 
 uint8_t display_setMode(StatusDisplayModes mode)
@@ -100,7 +100,7 @@ int16_t display_string(char *str, uint8_t line_number, uint8_t cursor_position, 
 	if(true == ceol_flag)
 	{
 //		while(cursor_end_position++ < chars_per_line)
-		while(cursor_end_position++ < chars_per_line - 1)
+		while(cursor_end_position++ < chars_per_line - 1) /* last character column reserved for scroll bar */
 			ssd1306_WriteChar(' ', DISPLAY_DEFAULT_FONT, color);
 	}
 	ssd1306_UpdateScreen();

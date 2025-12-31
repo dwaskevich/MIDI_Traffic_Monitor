@@ -79,6 +79,7 @@ uint16_t ui_initialize_ui(void)
 	display_line_pointer = FIRST_DISPLAY_LINE;
 
 	ui_draw_scroll_bar(1, SSD1306_HEIGHT, ABSOLUTE, White, false); /* draw an initial scroll bar ... single row of pixels at bottom of scroll bar area */
+	ssd1306_FillRectangle(SSD1306_WIDTH - 2, 0, SSD1306_WIDTH, DISPLAY_DEFAULT_FONT.height - 2, Black); /* blank new data indicator */
 
 	capture_session = (struct CaptureSession){0};
 	scroll_session = (struct ScrollSession){0};
@@ -138,25 +139,57 @@ void ui_post_packet_to_history(stc_midi* ptr_packet)
 
 void ui_post_packet_to_display(stc_midi* ptr_packet)
 {
-	/* process scroll bar */
-	float height = (float)MODULO(capture_session.midi_total_count, NUMBER_PAGES) / NUMBER_PAGES;
-	ui_draw_scroll_bar(height, 0, PERCENT, (capture_session.number_rollovers + 1) % 2, capture_session.number_rollovers);
-
-	/* post to display if channel filter matches */
-	if(filter_getChannel() == 0 || filter_getChannel() == ptr_packet->channel)
+	switch(app_get_state())
 	{
-		/* put relative midi session timestamp on status line */
-		uint32_t midi_delta_timestamp = session_getDeltaTime(ptr_packet->time_stamp);
-		display_status(display_getMode(), midi_delta_timestamp, 0, ui_get_scroll_direction_indicator());
+		case APP_STATE_MIDI_DISPLAY:
+			/* process scroll bar */
+			float height = (float)MODULO(capture_session.midi_total_count, NUMBER_PAGES) / NUMBER_PAGES;
+			ui_draw_scroll_bar(height, 0, PERCENT, (capture_session.number_rollovers + 1) % 2, capture_session.number_rollovers);
 
-		if(FIRST_DISPLAY_LINE == display_line_pointer) /* display is full, create new blank page */
-			display_clear_page(Black);
+			/* post to display if channel filter matches */
+			if(filter_getChannel() == 0 || filter_getChannel() == ptr_packet->channel)
+			{
+				/* put relative midi session timestamp on status line */
+				uint32_t midi_delta_timestamp = session_getDeltaTime(ptr_packet->time_stamp);
+				display_status(display_getMode(), midi_delta_timestamp, 0, ui_get_scroll_direction_indicator());
 
-		/* write most recent history record to current line pointer of display */
-		display_string(midi_process_message(ptr_packet->running_status, ptr_packet->data[0], ptr_packet->data[1]), display_line_pointer, 0, White, true);
-		display_line_pointer++; /* move display pointer for next arrival */
-		if(display_line_pointer > LAST_DISPLAY_LINE)
-			display_line_pointer = FIRST_DISPLAY_LINE;
+				if(FIRST_DISPLAY_LINE == display_line_pointer) /* display is full, create new blank page */
+					display_clear_page(Black);
+
+				/* write most recent history record to current line pointer of display */
+				display_string(midi_process_message(ptr_packet->running_status, ptr_packet->data[0], ptr_packet->data[1]), display_line_pointer, 0, White, true);
+				display_line_pointer++; /* move display pointer for next arrival */
+				if(display_line_pointer > LAST_DISPLAY_LINE)
+					display_line_pointer = FIRST_DISPLAY_LINE;
+			}
+			else /* animate new data arrival indicator to notify ui of non-matching data arrival in background */
+			{
+				static uint8_t filtered_channel_arrival_count = 0;
+				/* indicate new data arrival for other channels */
+				ssd1306_FillRectangle(SSD1306_WIDTH - 2, 0, SSD1306_WIDTH, DISPLAY_DEFAULT_FONT.height - 2, Black);
+				/* animate new arrival indicator */
+				if(filtered_channel_arrival_count++ % 2)
+					ssd1306_FillRectangle(SSD1306_WIDTH - 2, 3, SSD1306_WIDTH, DISPLAY_DEFAULT_FONT.height - 2, White);
+				else
+					ssd1306_FillRectangle(SSD1306_WIDTH - 2, 0, SSD1306_WIDTH, DISPLAY_DEFAULT_FONT.height - 2, White);
+				ssd1306_UpdateScreen();
+			}
+			break;
+
+		case APP_STATE_SCROLL_HISTORY:
+			static uint8_t new_arrival_count = 0;
+			/* indicate new data arrival in background */
+			ssd1306_FillRectangle(SSD1306_WIDTH - 2, 0, SSD1306_WIDTH, DISPLAY_DEFAULT_FONT.height - 2, Black);
+			/* animate new arrival indicator */
+			if(new_arrival_count++ % 2)
+				ssd1306_FillRectangle(SSD1306_WIDTH - 2, 3, SSD1306_WIDTH, DISPLAY_DEFAULT_FONT.height - 2, White);
+			else
+				ssd1306_FillRectangle(SSD1306_WIDTH - 2, 0, SSD1306_WIDTH, DISPLAY_DEFAULT_FONT.height - 2, White);
+			ssd1306_UpdateScreen();
+			break;
+
+		default:
+			break;
 	}
 }
 
@@ -308,7 +341,8 @@ void ui_scroll_history(int16_t delta)
 			scroll_bar_movement_ratio = (SCROLL_BAR_MAX_VERTICAL_SIZE * 1024 / NUMBER_PAGES);
 			scroll_bar_segment_position = SCROLL_BAR_TOP_PIXEL_POSITION + (((NUMBER_PAGES - 1) - MYMODULO(scroll_session.scroll_index - capture_session.oldest_index, NUMBER_PAGES)) * scroll_bar_movement_ratio)/1024 + LAST_DISPLAY_LINE;
 		}
-		ui_draw_scroll_bar(scroll_segment_size - 1, scroll_bar_segment_position, ABSOLUTE, White, false);
+		if(scroll_session.delta_total < 0) /* clamp scroll bar upward movement if new data has arrived while in scroll */
+			ui_draw_scroll_bar(scroll_segment_size - 1, scroll_bar_segment_position, ABSOLUTE, White, false);
 
 		/* build recalled record for display */
 		uint32_t midi_delta_timestamp = session_getDeltaTime(midi_history[MYMODULO(scroll_session.scroll_index, NUMBER_PAGES)].time_stamp);
@@ -356,9 +390,10 @@ int16_t ui_restore_display(void)
 	scroll_session.is_scroll_active = false; /* reset scroll session flag */
 	scroll_session.is_scroll_at_end = false;
 
-	/* redraw scroll bar */
+	/* redraw scroll bar and blank out background data arrival indicator */
 	float height = (float)MODULO(capture_session.midi_total_count, NUMBER_PAGES) / NUMBER_PAGES;
 	ui_draw_scroll_bar(height, 0, PERCENT, (capture_session.number_rollovers + 1) % 2, capture_session.number_rollovers);
+	ssd1306_FillRectangle(SSD1306_WIDTH - 2, 0, SSD1306_WIDTH, DISPLAY_DEFAULT_FONT.height - 2, Black);
 
 	if(filter_getChannel() == 0 || filter_getChannel() == midi_history[index].channel)
 	{

@@ -36,7 +36,7 @@ void heartbeat(void)
 		}
 		temp[i] = '\0';
 		counter++;
-		display_string(temp, 1, 8, White, true);
+		display_string(temp, 1, 12, White, true);
 	}
 }
 

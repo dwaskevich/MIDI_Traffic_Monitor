@@ -30,11 +30,16 @@ void heartbeat(void)
 	{
 		static uint16_t counter = 0;
 		uint8_t i;
-		for(i = 0; i <= counter % 3; i++)
+		if(counter % 4 == 0)
+			temp[0] = '\0';
+		else
 		{
-			temp[i] = '.';
-		}
-		temp[i] = '\0';
+			for(i = 0; i <= (counter - 1) % 4; i++)
+			{
+				temp[i] = '.';
+			}
+			temp[i] = '\0';
+			}
 		counter++;
 		display_string(temp, 1, 12, White, true);
 	}

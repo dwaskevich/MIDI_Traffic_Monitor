@@ -552,7 +552,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 }
 
 /**
-  * TIM1 - escape sequence time-out timer, TIM2 readback timer
+  * TIM4 - time-out timer
   *
   * @brief  Period elapsed callback in non blocking mode
   * @param  htim : TIM handle
@@ -562,7 +562,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	if(htim->Instance == TIM4)
 	{
-		timeoutFlag = true; /* set timeOut flag to indicate escape sequence parsing should be abandoned/aborted */
+		timeoutFlag = true; /* set timeOut flag to indicate scroll screen should be updated */
 		HAL_TIM_Base_Stop_IT(htim);
 	}
 

@@ -24,7 +24,7 @@ typedef enum {
 } ButtonEvent;
 
 void button_init(void);
-void button_exti_trigger(ButtonID id);  // Call from EXTI ISR
+void button_exti_trigger(ButtonID id, bool is_pressed);  // Call from EXTI ISR
 void button_poll(void);                 // Call from scheduled task
 
 ButtonEvent button_get_event(ButtonID id);  // Poll for events

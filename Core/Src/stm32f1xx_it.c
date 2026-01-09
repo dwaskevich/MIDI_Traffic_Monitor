@@ -54,12 +54,15 @@
 /* USER CODE BEGIN 0 */
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+	GPIO_PinState state;
     switch (GPIO_Pin) {
         case GPIO_PIN_4:  // Scroll_Btn (PA4)
-            button_exti_trigger(BUTTON_SCROLL);
+        	state = HAL_GPIO_ReadPin(Scroll_Btn_GPIO_Port, GPIO_Pin);
+        	button_exti_trigger(BUTTON_SCROLL, !state);
             break;
         case GPIO_PIN_5:  // Filter_Btn (PA5)
-            button_exti_trigger(BUTTON_FILTER);
+        	state = HAL_GPIO_ReadPin(Filter_Btn_GPIO_Port, GPIO_Pin);
+        	button_exti_trigger(BUTTON_FILTER, !state);
             break;
     }
 }

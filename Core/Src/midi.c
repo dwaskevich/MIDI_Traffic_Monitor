@@ -39,10 +39,8 @@ const char* note_names[] = {
     "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
 };
 
-stc_midi* midi_build_packet(uint8_t rx_byte)
+stc_midi* midi_build_packet(uint8_t rx_byte, uint32_t byte_timestamp)
 {
-	static uint32_t timestamp = 0;
-
 	if(rx_byte >= 0xF8)
 	{
 		// Real-time message — handle immediately
@@ -52,8 +50,7 @@ stc_midi* midi_build_packet(uint8_t rx_byte)
 
 	if(rx_byte == 0xF0)
 	{
-		timestamp = HAL_GetTick();
-		midi_packet.time_stamp = timestamp;
+		midi_packet.time_stamp = byte_timestamp;
 	    in_sysex = true;
 	    sysex_index = 0;
 	}
@@ -71,14 +68,13 @@ stc_midi* midi_build_packet(uint8_t rx_byte)
 	if(rx_byte & 0x80)
     {
         // Status byte
-    	timestamp = HAL_GetTick();
-    	midi_packet.time_stamp = timestamp;
+    	midi_packet.time_stamp = byte_timestamp;
         midi_status = rx_byte;
         data_index = 0;
 
         if(!session_isActive()) /* if this is first byte of new session, set session start time */
 		{
-			session_start(timestamp);
+			session_start(byte_timestamp);
 			session_isActive();
 		}
 

@@ -41,7 +41,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define UART_FIFO_SIZE          (1024u)
+#define UART_FIFO_SIZE          (512u)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -65,7 +65,12 @@ volatile uint32_t ms_counter = 0;
 volatile uint16_t fifo_MaxLevelReached; /* debug-oriented measure of FIFO utilization */
 uint8_t rxBuffer[80]; /* may not be necessary, single variable may be enough ... needs testing */
 volatile uint16_t headPointer = 0, tailPointer = 0; /* FIFO head and tail pointers */
-volatile uint8_t rxFIFO[UART_FIFO_SIZE]; /* Rx FIFO ... no rollover protection, older characters overwritten if FIFO fills */
+
+typedef struct {
+	uint8_t  rx_byte;
+	uint32_t byte_timestamp;
+} rxData;
+volatile rxData rxFIFO[UART_FIFO_SIZE]; /* Rx FIFO ... no rollover protection, older characters overwritten if FIFO fills */
 
 volatile uint32_t midi_timestamp = 0, midi_delta_timestamp = 0;
 uint16_t newest_message_encoder_value; /* encoder value for newest message ... will be used to automatically switch from SCROLL to LIVE mode */
@@ -105,6 +110,7 @@ int main(void)
 
   /* USER CODE BEGIN 1 */
   uint8_t rx_data;
+  uint32_t rx_data_timestamp;
 
   /* USER CODE END 1 */
 
@@ -170,11 +176,12 @@ int main(void)
 	  /* check rxFIFO for incoming characters */
 	  if(tailPointer != headPointer) /* if true, new data is available */
 	  {
-		  rx_data = rxFIFO[tailPointer++]; /* retrieve new character from FIFO */
+		  rx_data_timestamp = rxFIFO[tailPointer].byte_timestamp; /* retrieve timestamp from FIFO */
+		  rx_data = rxFIFO[tailPointer++].rx_byte; /* retrieve new character from FIFO */
 		  if(tailPointer >= UART_FIFO_SIZE) /* manage FIFO pointer rollover */
 			  tailPointer = 0;
 
-		  ptr_packet = midi_build_packet(rx_data); /* build full 3-byte packets, save pointer for later use */
+		  ptr_packet = midi_build_packet(rx_data, rx_data_timestamp); /* build full 3-byte packets, save pointer for later use */
 	  }
 
 	  if(midi_isPacketAvailable())
@@ -532,7 +539,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
 	if (huart->Instance == USART1)
 	{
-		rxFIFO[headPointer++] = rxBuffer[0]; /* place received character from UART in FIFO */
+		rxFIFO[headPointer].byte_timestamp = HAL_GetTick(); /* timestamp received byte */
+		rxFIFO[headPointer++].rx_byte = rxBuffer[0]; /* place received character from UART in FIFO */
 		if(headPointer >= UART_FIFO_SIZE) /* manage headPointer rollover (new arrivals will overwrite older) */
 			headPointer = 0;
 

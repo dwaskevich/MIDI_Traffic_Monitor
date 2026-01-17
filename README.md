@@ -1,25 +1,30 @@
 # MIDI Traffic Monitor
 
-A real-time MIDI packet monitor and visualizer for the STM32F103C8T6 "Blue Pill" board with SSD1306 128x64 OLED display. Designed for efficient UART capture, scrollable history, and intuitive UI feedback using a rotary encoder.
+MIDI packet monitor for the STM32F103C8T6 "Blue Pill" with SSD1306 128x64 OLED display. Scrollable history maintained in SRAM. Interactive UI using rotary encoder scroll wheel, channel filter selector and pushbutton quick actions.
 
 ---
 
-# Product Look
+## Table of Contents - [Product Sketch / Mock-Up](#product-sketch--mock-up) - [Features](#features) - [Hardware Requirements](#hardware-requirements) - [Schematic](#schematic) - [STM32 Blue Pill Pinout Configuration](#stm32-blue-pill-pinout-configuration) - [3D PCB Render](#3d-pcb-render) - [Project Structure](#project-structure) - [Building and Flashing](#building-and-flashing) - [STM32F103 Setup (CubeMX)](#stm32f103-setup-cubemx) - [Hardware](#hardware) - [Firmware Architecture](#firmware-architecture)
 
-![alt text](image.png)
+
+# Product Sketch / Mock-Up
+
+![alt text](image-3.png)
 
 ---
 
 ## Features
 
-- **Live MIDI stream capture** via UART (31250 baud)
-- **Scroll wheel navigation** with short/long press actions
-- **Animated scroll bar** with rollover indication and mode-aware behavior
+- **Live MIDI stream capture** via UART (31250 baud) with byte-arrival timestamping
+- **Scroll wheel navigation** with short-press/long-press actions (jump to newest/oldest)
+- **Active scroll bar animation** with position and rollover indication
 - **History buffer** of up to 700 raw MIDI packets (stored in SRAM)
 - **Real-time parsing** of MIDI notes and control messages
 - **OLED display output** using 128 x 64, .96" SSD1306 over I2C
-- **Channel filter** with reset and session reinitialization support
-- **Efficient ISR-driven UART FIFO** (512 bytes deep)
+- **Channel filter selector** with reset and session reinitialization support
+- **Efficient ISR-driven UART FIFO** (512 structures deep)
+- **Console UART** for debug messaging and session monitoring
+- **MIDI pass-through buffering** with activity LED
 
 ---
 
@@ -27,9 +32,16 @@ A real-time MIDI packet monitor and visualizer for the STM32F103C8T6 "Blue Pill"
 
 - STM32F103C8T6 ("Blue Pill")
 - SSD1306 128x64 OLED (I2C)
-- Rotary encoder with push button
+- Rotary encoders with push buttons
 - MIDI IN circuit (optocoupler + current limiting resistors)
-- ST-Link v2 or compatible debugger
+- (Optional) MIDI pass-through buffering
+- ST-Link v2 or compatible programmer/debugger
+
+---
+
+## Schematic
+
+![alt text](image-2.png)
 
 ---
 
@@ -37,11 +49,6 @@ A real-time MIDI packet monitor and visualizer for the STM32F103C8T6 "Blue Pill"
 
 ![alt text](image-1.png)
 
----
-
-## Schematic
-
-![alt text](image-2.png)
 
 ---
 
@@ -69,3 +76,198 @@ MIDI_Traffic_Monitor/
 ├── README.md
 ```
 
+## Building and Flashing
+1. Open the project in STM32CubeIDE.
+2. Build the project (`Project > Build All`).
+3. Flash to target using ST-Link (`Run > Debug As > STM32 Cortex-M C/C++ Application`).
+4. Or flash the prebuilt image from `hex_image/` using STM32CubeProgrammer.
+
+---
+
+## STM32F103 Setup (CubeMX)
+
+- STM32F103C8T6
+    - Flash - 128k, SRAM - 20k
+- STM32F103 configuration files generated from CubeMX:
+    - USART1 - MIDI In (PA10), 31,250 baud
+    - USART2 - Console UART (PA2/PA3), 115,200 baud
+    - SSD1306 OLED I2C Display - SCL1/SDA1 (default PB6/PB7)
+    - Scroll Wheel Rotary Encoder - TIM2_CH1/CH2 (PA0/PA1), Encoder Interface Mode (Quadrature Mode)
+        - Combined Channels = Encoder Mode
+        - Encoder Mode - TI1 and TI2
+        - GPIO - Input with pull-up
+        - Falling Edge, Input Filter ON (filter strength set to 4)
+    - Scroll Wheel Pushbutton - GPIO PA4 (Input w/pull-up, EXTI mode, rising/falling edge)
+    - Channel Filter Rotary Encoder - TIM3_CH1/CH2 (PA6/PA7), Encoder Interface Mode (Quadrature Mode)
+        - Combined Channels = Encoder Mode
+        - Encoder Mode - TI1 and TI2
+        - GPIO - Input with pull-up
+        - Falling Edge, Input Filter ON (filter strength set to 4)
+    - Channel Filter Pushbutton - GPIO PA5 (Input w/pull-up, EXTI mode, rising/falling edge)
+    - SWD Interface - PA13, PA14 (Blue Pill)
+    - User LED (Blue Pill) - PC13
+    - TIM4 - one-shot timer w/interrupt (~500ms) - controls display timing feature
+        - Prescaler = 64800 - 1, Counter Period = 500 - 1 (450 ms timeout)
+    - RCC Crystal Oscillator (HSE - 8 MHz) - PD0/PD1 (default on STM32 Blue Pill)
+    - Clock Configuration - HSE enabled (8 MHz), PLL 9x, SysClk = 72 MHz
+    - SYSTICK Timer - default 1 ms
+
+---
+## Hardware
+
+- SSD1306 OLED display:
+    - 128x64 pixels, I2C interface w/on-board pullups
+    - UI design ... status line at top, main screen holds 6 MIDI records
+    - I2C delays plus display write functions result in sluggish display updates
+        - For LIVE data capture, natural scrolling (i.e. newest on top, older below) impractical.
+        - LIVE/incoming MIDI packets written to current line pointer, line pointer incremented to next line (i.e. newest record at bottom, older above)
+        - 7th packet clears screen and starts again at top
+	    - Not natural or appealing but better visual response (i.e. faster updates) during live activity
+    - For scrolling ... natural scrolling order (newest at top, older below)
+        - Scroll wheel movements recall one record at a time (1 detent = 1 record)
+        - TIM4 timer triggered by scroll wheel movement and timeout expiration (~500 ms) initiates posting of remaining 5 records to display
+            - Provides enough time to examine recalled record before remaining screen is painted. Avoids nuisance of waiting for screen refresh.
+- MIDI In, MIDI Thru
+    - 6N138 Opto Coupler
+    - Output pulled up to +5V to support MIDI Thru
+        - STM32F103 PA10 is 5V tolerant
+    - 74LS04 Hex Inverter
+        - Drives MIDI Thru connector and MIDI Activity LED
+- Scroll Wheel Rotary Encoder
+    - 2 counts/detent, 30 detents/revolution
+        - "Smoother" feel for precise scrolling
+    - TIM2 counter divided by 2 yields 1 increment (positive or negative) per detent
+- Channel Filter Rotary Encoder
+    - 4 counts/detent, 20 detents/revolution
+        - "Purposeful" feel for channel selection
+    - TIM3 counter divided by 4 in filter_setChannelFromEncoder() in filter_channels.c
+        - Channel selection easily determined/calculated with modulo 17 (16 available MIDI channels)
+- Encoder Pushbuttons
+    - GPIO Input w/pull-up, EXTI mode, rising/falling edge
+    - External pullups (1k) added to increase/improve button-release rise time
+- Console UART
+    - Standard/typical 115,200 console interface
+    - __io_putchar() defined in main.c to support printf debugging
+
+---
+
+## Firmware Architecture
+
+- No RTOS, simple SYSTICK-based task scheduler (1ms tick resolution)
+    - Task setup defined in tasks.c:
+        - In tasks_init() use scheduler_add_task() to add task
+        - Define task callback functions in tasks.c
+        - Call scheduler_init() and tasks_init() before while(1) loop in main.c
+    - Task scheduler (run_scheduled_tasks()) dispatched from HAL_SYSTICK_Callback in main.c
+    - 3 tasks defined - heartbeat, read_encoders, poll_buttons
+
+- MIDI UART
+    - Incoming bytes handled by ISR callback (HAL_UART_RxCpltCallback()) in main.c :
+        - FIFO head/tail pointers managed in ISR callback
+        - MAX FIFO utilization calculated for debug and tuning
+    - Rx byte and arrival timestamp stored in rxFIFO
+    - FIFO depth currently set to 512 records (based on available SRAM and tradeoff with MIDI packet history)
+    - Circular buffer ... no rollover protection but deep enough to avoid overwriting
+    - Background processing of incoming bytes ensures no MIDI data is missed while updating display or scrolling history
+
+- Encoder Pushbutton Handlers
+    - Interrupt based:
+        - Rising and falling edge detection supports and identifies press and release events
+    - Short/long press events and actions supported:
+        - "Long" duration #defined in buttons.c :
+            - LONG_PRESS_THRESHOLD_MS 500
+        - Scroll pushbutton:
+            - Short = return to LIVE (i.e. display newest record)
+            - Long = jump to end (i.e. display oldest record)
+        - Channel Filter pushbutton:
+            - Short = reset channel selection to "ALL"
+            - Long = end current capture session and initialize new session
+
+- Simple main.c forevever loop:
+    - Checks FIFO head/tail pointers for MIDI data arrival
+        - Calls midi_build_packet(rx_data, rx_data_timestamp) in midi.c if new data is available
+    - Checks midi_isPacketAvailable flag
+        - Calls ui_process_midi_packet() in ui.c if MIDI packet has been assembled and available
+    - Checks timeoutFlag flag (from TIM4 timeout timer ISR)
+        - Calls ui_fill_display() in ui.c if true
+
+- tasks.c
+    - Processes scheduler-dispatched periodic tasks
+        - heartbeat() task - 500 ms
+            - Routine activity ... flashes heartbeat LED
+            - Animates "Waiting ..." message/screen at beginning of capture session
+        - read_encoders() task - 20 ms
+            - Reads TIM2/TIM3 counters, compares current to previous counts to detect movement
+            - Scroll encoder movement detected ... calculates delta and calls ui_scroll_history(delta)
+            - Channel Filter encoder movement detected ... sets filter channel and updates status line display
+        - poll_buttons() task - 10 ms
+            - Calls button_poll() in buttons.c
+            - Processes button events decoded and posted in button_poll()
+                - Note - button_exti_trigger(), called by HAL_GPIO_EXTI_Callback() in stm32f1xx_it.c, handles debounce and updates button states that are then used by button_poll() to determine actions
+            - Switch statement gets button event from button_get_event() in buttons.c
+
+- ui.c
+    - Main user interface handler
+    - Initializes UI and MIDI history array
+    - Maintains capture session statistics (session start time, is_active flag, etc)
+    - Processes MIDI packets
+        - Posts packets to history array
+        - Posts packets to display (if in LIVE mode)
+    - Handles scroll functions and display updates
+    - Applies channel filter setting in ui_get_filtered_record_index() to filter by user request
+    - Processes TIM4 timeout with ui_fill_display() to fill rest of display screen
+    - Handles ui_jump_to_oldest() when called from scroll button long press
+    - Handles scroll bar calculation and display screen drawing
+
+- ssd1306.c
+    - Library from https://github.com/afiskon/stm32-ssd1306/tree/master
+    - Font - Font_6x8
+    - 7 lines, 21 characters per line
+
+- display.c
+    - Display layout (7 usable lines):
+        - Status Line - top line reserved for status and channel number
+        - Main Screen - remaining 6 lines for incoming traffic and scrolling history
+    - 2-state state machine
+        - LIVE mode (for posting incoming MIDI data)
+            - Display builds downward (newest at bottom) due to sluggishness of display scrolling
+            - Status line indicates arrival timestamp (relative to capture session start)
+        - SCROLL mode (for posting history)
+            - Display writes newest at top, paints remainder downward
+            - Status line indicates recalled record's index into history array and associated timestamp
+    - Helper functions for SSD1306 display
+        - display_clear_screen() - clears entire screen
+        - display_clear_page() - clears main screen (scroll bar and status line unaffected)
+        - display_string() - display string to main screen
+        - display_status() - displays status message to status line
+        - display_string_to_status_line() - display free-form string to status line
+        - display_channel() - displays channel number to status line
+        - display_draw_scroll_arrow() - displays scroll arrow
+        - display_splash_screen() - just cosmetics, displays application statistics
+
+- midi.c
+    - Builds MIDI packets from raw byte UART capture:
+        - midi_build_packet()
+    - Parses MIDI packet for and builds MIDI message:
+        - midi_process_message()
+    - Skeleton for MIDI SysEx messages (but not implemented)
+        - midi_handle_sysex()
+    - Converts MIDI note number (0–127) to string like "C4"
+        - midi_get_note_name()
+
+- session.c
+    - Manages capture session statistics and calculates session delta time
+        - session_start()
+        - session_stop()
+        - session_isActive()
+        - session_getStartTimestamp()
+        - session_getDeltaTime()
+
+- app_state_machine.c
+    - Sets and gets application state
+    - Enum defined in app_state_machine.h :
+        - typedef enum {
+    APP_STATE_MIDI_DISPLAY,
+    APP_STATE_SCROLL_HISTORY,
+	APP_STATE_CONFIG
+} AppState;

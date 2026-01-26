@@ -21,7 +21,7 @@ MIDI packet monitor for the STM32F103C8T6 "Blue Pill" with SSD1306 128x64 OLED d
 - **History buffer** of up to 700 raw MIDI packets (stored in SRAM)
 - **Real-time parsing** of MIDI notes and control messages
 - **OLED display output** using 128 x 64, .96" SSD1306 over I2C
-- **Channel filter selector** with reset and session reinitialization support
+- **Channel filter selector** with quick reset and session reinitialization support
 - **Efficient ISR-driven UART FIFO** (512 structures deep)
 - **Console UART** for debug messaging and session monitoring
 - **MIDI pass-through buffering** with activity LED
@@ -63,8 +63,8 @@ MIDI packet monitor for the STM32F103C8T6 "Blue Pill" with SSD1306 128x64 OLED d
 
 ```text
 MIDI_Traffic_Monitor/
-├── Core/                   # STM32Cube-generated core files
-├── Drivers/                # HAL/LL drivers
+├── Core/                   # Source code and header files
+├── Drivers/                # STM32Cube HAL/LL drivers
 ├── Debug/                  # Build output (ignored by Git)
 ├── hex_image/              # Prebuilt hex image for flashing STM32F103
 ├── hardware/               # Schematic (pdf), gerbers (zipped), 3D render
@@ -107,10 +107,16 @@ MIDI_Traffic_Monitor/
     - SWD Interface - PA13, PA14 (Blue Pill)
     - User LED (Blue Pill) - PC13
     - TIM4 - one-shot timer w/interrupt (~500ms) - controls display timing feature
+        - One Pulse Mode
         - Prescaler = 64800 - 1, Counter Period = 500 - 1 (450 ms timeout)
     - RCC Crystal Oscillator (HSE - 8 MHz) - PD0/PD1 (default on STM32 Blue Pill)
     - Clock Configuration - HSE enabled (8 MHz), PLL 9x, SysClk = 72 MHz
     - SYSTICK Timer - default 1 ms
+    - NVIC:
+        - EXTI line4 interrupt enabled, priority 1
+        - EXTI line[9:5] interrupts enabled, priority 1
+        - TIM4 global interrupt enabled, priority 2
+        - USART1 global interrupt enabled, priority 0
 
 ---
 ## Hardware
@@ -154,12 +160,23 @@ MIDI_Traffic_Monitor/
 ## Firmware Architecture
 
 - No RTOS, simple SYSTICK-based task scheduler (1ms tick resolution)
-    - Task setup defined in tasks.c:
-        - In tasks_init() use scheduler_add_task() to add task
-        - Define task callback functions in tasks.c
-        - Call scheduler_init() and tasks_init() before while(1) loop in main.c
-    - Task scheduler (run_scheduled_tasks()) dispatched from HAL_SYSTICK_Callback in main.c
-    - 3 tasks defined - heartbeat, read_encoders, poll_buttons
+    - Add `HAL_SYSTICK_IRQHandler();` to the `USER CODE BEGIN SysTick_IRQn 0` section of `void SysTick_Handler(void)` in `stm32f1xx_it.c`
+        - This ensures `HAL_SYSTICK_Callback()` is called every 1ms
+        - Note - `HAL_SYSTICK_IRQHandler()` is defined in `stm32f1xx_hal_cortex.c`
+    - In `HAL_SYSTICK_Callback()` (in `main.c`), add:
+        - `ms_counter++;` to track elapsed time
+        - `run_scheduled_tasks();` to dispatch tasks at their scheduled intervals
+    - Task setup is defined in `tasks.c`:
+        - Use `scheduler_add_task()` in `tasks_init()` to register tasks
+        - Define task callback functions (e.g., `heartbeat_task()`, `read_encoders_task()`, `poll_buttons_task()`)
+    - In `main.c`, call `scheduler_init();` and `tasks_init();` before the `while(1)` loop
+    - The scheduler is driven by `run_scheduled_tasks()` called from `HAL_SYSTICK_Callback()`
+    - Currently, 3 tasks defined:
+        - `heartbeat` – toggles LED for system heartbeat
+        - `read_encoders` – reads rotary encoder state
+        - `poll_buttons` – checks button inputs
+    - **Troubleshooting Tip**: If tasks aren't running or the heartbeat LED doesn't blink, ensure `HAL_SYSTICK_IRQHandler();` is present in `SysTick_Handler()`. Without it, `HAL_SYSTICK_Callback()` won't be triggered.
+
 
 - MIDI UART
     - Incoming bytes handled by ISR callback (HAL_UART_RxCpltCallback()) in main.c :
@@ -169,6 +186,13 @@ MIDI_Traffic_Monitor/
     - FIFO depth currently set to 512 records (based on available SRAM and tradeoff with MIDI packet history)
     - Circular buffer ... no rollover protection but deep enough to avoid overwriting
     - Background processing of incoming bytes ensures no MIDI data is missed while updating display or scrolling history
+
+- Console UART
+    - Add `__io_putchar()` in main.c to support printf debugging:
+        - int __io_putchar(int ch) {
+    HAL_UART_Transmit(&huart2, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
+    return ch;
+}
 
 - Encoder Pushbutton Handlers
     - Interrupt based:
@@ -217,7 +241,13 @@ MIDI_Traffic_Monitor/
     - Applies channel filter setting in ui_get_filtered_record_index() to filter by user request
     - Processes TIM4 timeout with ui_fill_display() to fill rest of display screen
     - Handles ui_jump_to_oldest() when called from scroll button long press
-    - Handles scroll bar calculation and display screen drawing
+    - Handles scroll bar calculation and display screen drawing:
+        - Last 3 pixels of active screen reserved for scroll bar
+            - Color inverts to indicate rollover (i.e. overwriting of previous history)
+        - Last 2 pixels of Status Line reserved for background data arrival indication. Animated to indicate incoming MIDI activity while in scroll mode.
+        - Two drawing modes for scroll bar:
+            - Percent - dynamically adjusts scroll bar height to percent of reference (either total session count or maximum size of history if rollover has occurred)
+            - Absolute - places scroll bar at requested position with requested height
 
 - ssd1306.c
     - Library from https://github.com/afiskon/stm32-ssd1306/tree/master

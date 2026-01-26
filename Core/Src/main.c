@@ -160,7 +160,7 @@ int main(void)
 
   printf("\r\n\n---- Application started. -------\r\n");
   printf("Number of history elements initialized = %d\r\n", ui_initialize_ui());
-  printf("Number of OLED display lines = %d\r\n", SSD1306_HEIGHT / DISPLAY_DEFAULT_FONT.height);
+  printf("Number of OLED display lines = %d\r\n", SSD1306_HEIGHT / DISPLAY_DEFAULT_FONT.height - 1);
 
   HAL_UART_Receive_IT(&huart1, rxBuffer, 1); /* start UART in interrupt mode */
   printf("MIDI UART started.\r\n\n");

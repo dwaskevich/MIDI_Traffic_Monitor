@@ -39,7 +39,7 @@ void ui_process_midi_packet(stc_midi* ptr_packet);
 void ui_post_packet_to_history(stc_midi* ptr_packet);
 void ui_fill_display(void);
 void ui_scroll_history(int16_t delta);
-int16_t ui_get_filtered_record_index(int16_t index);
+int16_t ui_get_filtered_record_index(int16_t index, uint16_t number_records_to_check, ScrollDirection direction);
 int16_t ui_restore_display(void);
 void ui_fill_scroll_display_buffer(int16_t index, int16_t number_records);
 void ui_set_scroll_direction_indicator(ScrollDirection scroll_direction);

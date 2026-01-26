@@ -18,12 +18,9 @@
 
 #include "string.h"
 
-/* define number of storage pages for traffic history (limited by available SRAM) */
-//#define NUMBER_PAGES    (15u)
-
 /* constants for OLED display */
 #define FIRST_DISPLAY_LINE	1u
-#define LAST_DISPLAY_LINE	7u
+#define LAST_DISPLAY_LINE	6u
 //#define SCROLL_BAR_TOP_PIXEL_POSITION	(DISPLAY_DEFAULT_FONT.height)
 #define SCROLL_BAR_TOP_PIXEL_POSITION	(8)
 #define SCROLL_BAR_MAX_VERTICAL_SIZE  (SSD1306_HEIGHT - SCROLL_BAR_TOP_PIXEL_POSITION)
@@ -57,6 +54,7 @@ struct ScrollSession {
 	int16_t  display[LAST_DISPLAY_LINE]; // Holds scroll history indexes for painting display during scroll back/forward
 	int16_t  new_arrival_total;		// Additional count added to "LIVE" threshold while in scroll session
 	int16_t  delta_total;			// Total of all scroll wheel movements during session
+	int16_t  filtered_index;		// Index of record that matches channel filter
     ScrollDirection direction;  	// UI status line up/down arrow display direction indicator
 };
 
@@ -193,45 +191,57 @@ void ui_post_packet_to_display(stc_midi* ptr_packet)
 	}
 }
 
-int16_t ui_get_filtered_record_index(int16_t index)
+int16_t ui_get_filtered_record_index(int16_t index, uint16_t number_records_to_check, ScrollDirection direction)
 {
-	/* search backward for next record matching channel filter */
+	/* search for next record matching channel filter */
 	int16_t filtered_index = index;
-	uint16_t number_records_to_check = capture_session.has_rollover_occurred ? capture_session.midi_total_count : NUMBER_PAGES;
-	uint16_t i;
-	for(i = 0; i < number_records_to_check; i++)
+	if(0 == number_records_to_check)
+		number_records_to_check = capture_session.has_rollover_occurred ? capture_session.midi_total_count : NUMBER_PAGES;
+	for(uint16_t i = 0; i < number_records_to_check; i++)
 	{
-		filtered_index = MYMODULO((index - i), NUMBER_PAGES);
+		if(DOWN == direction)
+			filtered_index = MYMODULO((index - i), NUMBER_PAGES);
+		else
+			filtered_index = MYMODULO((index + 2 + i), NUMBER_PAGES);
 		if(filter_getChannel() == 0 || filter_getChannel() == midi_history[filtered_index].channel)
-		{
 			return filtered_index; /* matching channel found, return index of matching record */
-		}
 	}
 	return NUMBER_PAGES + 1; /* default return value for "no records found" */
 }
 
 void ui_fill_display(void)
 {
-	int16_t filtered_index;
-
-	for(uint8_t i = 0; i < LAST_DISPLAY_LINE; i++)
+	int16_t filtered_index = scroll_session.filtered_index; /* use filtered index to begin channel filter search */
+	for(uint8_t i = 1; i < LAST_DISPLAY_LINE; i++) /* process next/last 5 lines of display */
 	{
-		if(scroll_session.display[i] > NUMBER_PAGES)
+		if(scroll_session.display[i] > NUMBER_PAGES) /* no need to go any further ... end of history reached */
 		{
 		  display_string("End of history", i + 1, 0, White, true);
-		  break;
+		  return;
 		}
 
-		filtered_index = ui_get_filtered_record_index(scroll_session.display[i]);
-		if((filtered_index) > NUMBER_PAGES)
+		if(filter_getChannel() == 0) /* no channel filter in place, retrieve all records */
 		{
-		  char temp_buffer[16];
-		  sprintf(temp_buffer, "%d No match", scroll_session.display[i]);
-		  display_string_to_status_line(temp_buffer, 0);
-		  break; /* no records matching channel filter */
+			/* use scroll_session.display[] indexes for retrieval */
+			display_string(midi_process_message(midi_history[scroll_session.display[i]].running_status, midi_history[scroll_session.display[i]].data[0], midi_history[scroll_session.display[i]].data[1]), i + 1, 0, White, true);
 		}
-
-		display_string(midi_process_message(midi_history[scroll_session.display[i]].running_status, midi_history[scroll_session.display[i]].data[0], midi_history[scroll_session.display[i]].data[1]), i + 1, 0, White, true);
+		else /* look for records matching channel filter setting */
+		{
+			uint16_t number_records_to_search = (filtered_index + NUMBER_PAGES - capture_session.oldest_index) % NUMBER_PAGES;
+			filtered_index = ui_get_filtered_record_index(filtered_index, number_records_to_search, DOWN); /* always search down from here */
+			if(filtered_index > NUMBER_PAGES)
+			{
+				/* no record(s) found or reached end of history */
+				display_string("End of history", i + 1, 0, White, true);
+				return;
+			}
+			else
+			{
+				/* matching record found */
+				display_string(midi_process_message(midi_history[filtered_index].running_status, midi_history[filtered_index].data[0], midi_history[filtered_index].data[1]), i + 1, 0, White, true);
+				filtered_index -= 1; /* start next search after the current one */
+			}
+		}
 	}
 }
 
@@ -266,6 +276,7 @@ void ui_scroll_history(int16_t delta)
 				scroll_session.scroll_index = capture_session.newest_index + 1; /* first entry into scroll session, set scroll index to newest capture session index */
 				scroll_session.delta_total = delta; /* scroll wheel delta movements will be used to confine scrolling to newest<>oldest range */
 				scroll_session.scroll_index += delta; /* move scroll index to requested record */
+				scroll_session.filtered_index = scroll_session.scroll_index; /* copy index to filtered index ... used later for channel filtering */
 				ui_fill_scroll_display_buffer(scroll_session.scroll_index, scroll_session.number_records + scroll_session.delta_total + 1); /* fill display buffer while indexes are known */
 			}
 		}
@@ -348,17 +359,36 @@ void ui_scroll_history(int16_t delta)
 		uint32_t midi_delta_timestamp = session_getDeltaTime(midi_history[MYMODULO(scroll_session.scroll_index, NUMBER_PAGES)].time_stamp);
 		/* prepare display/screen for requested scroll history */
 		display_clear_page(Black);
-		/* only display records that match channel filter setting */
-		if(filter_getChannel() == 0 || filter_getChannel() == midi_history[MYMODULO(scroll_session.scroll_index, NUMBER_PAGES)].channel)
+
+		/* TODO ... if channel filter not "ALL", search for first matching record. only display "No match" if end of history reached */
+
+		if(filter_getChannel() == 0) /* only display records that match channel filter setting */
 		{
+			/* no channel filter in place, retrieve and display record */
 			display_status(INDEX, midi_delta_timestamp, MYMODULO(scroll_session.scroll_index - capture_session.oldest_index, NUMBER_PAGES), scroll_session.direction);
 			display_string(midi_process_message(midi_history[MYMODULO(scroll_session.scroll_index, NUMBER_PAGES)].running_status, midi_history[MYMODULO(scroll_session.scroll_index, NUMBER_PAGES)].data[0], midi_history[MYMODULO(scroll_session.scroll_index, NUMBER_PAGES)].data[1]), 1, 0, White, true);
 		}
-		else /* no matching records found ... just report message */
+		else /* search for first record matching channel filter setting */
 		{
-			sprintf(temp_buffer, "%d No match", MYMODULO(scroll_session.scroll_index, NUMBER_PAGES));
-			display_string_to_status_line(temp_buffer, 0);
+			/* Note - scroll_session.filtered_index was set equal to scroll_session.scroll_index upon first entry into scroll session (see above) */
+			scroll_session.filtered_index = ui_get_filtered_record_index(MYMODULO(scroll_session.filtered_index, NUMBER_PAGES), 0, scroll_session.direction); /* search for record matching channel filter setting */
+			if(scroll_session.filtered_index < NUMBER_PAGES)
+			{
+				/* record found ... retrieve and display record */
+				midi_delta_timestamp = session_getDeltaTime(midi_history[MYMODULO(scroll_session.filtered_index, NUMBER_PAGES)].time_stamp);
+				display_status(INDEX, midi_delta_timestamp, MYMODULO(scroll_session.filtered_index - capture_session.oldest_index, NUMBER_PAGES), scroll_session.direction);
+				display_string(midi_process_message(midi_history[MYMODULO(scroll_session.filtered_index, NUMBER_PAGES)].running_status, midi_history[MYMODULO(scroll_session.filtered_index, NUMBER_PAGES)].data[0], midi_history[MYMODULO(scroll_session.filtered_index, NUMBER_PAGES)].data[1]), 1, 0, White, true);
+				scroll_session.filtered_index -= 1; /* move past this occurrence for next search */
+			}
+			else
+			{
+				/* no matching records found */
+				sprintf(temp_buffer, "%d No match", MYMODULO(scroll_session.scroll_index, NUMBER_PAGES));
+				display_string_to_status_line(temp_buffer, 0);
+			}
 		}
+
+
 		if(true == scroll_session.is_scroll_at_end)
 		{
 			display_string("End of history", 2, 0, White, true);
@@ -374,7 +404,7 @@ void ui_scroll_history(int16_t delta)
 			timeoutFlag = false;
 			break;
 		case APP_STATE_SCROLL_HISTORY:
-			/* restart one-shot timer (timeout period set to .5sec) ... expiration will fill screen with next 6 values */
+			/* restart one-shot timer (timeout period set to .5sec) ... expiration will fill screen with next 5 values */
 			HAL_TIM_Base_Stop_IT(&htim4);
 			__HAL_TIM_SET_COUNTER(&htim4, 0);
 			HAL_TIM_Base_Start_IT(&htim4);

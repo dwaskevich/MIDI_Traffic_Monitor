@@ -28,7 +28,7 @@ void display_init(void)
   ssd1306_Init();
   line_height = DISPLAY_DEFAULT_FONT.height + 1;
   chars_per_line = SSD1306_WIDTH / DISPLAY_DEFAULT_FONT.width;
-  number_lines = (SSD1306_HEIGHT / DISPLAY_DEFAULT_FONT.height);
+  number_lines = (SSD1306_HEIGHT / DISPLAY_DEFAULT_FONT.height) - 1;
 }
 
 void display_splash_screen()

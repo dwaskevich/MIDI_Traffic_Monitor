@@ -54,7 +54,7 @@ MIDI packet monitor for the STM32F103C8T6 "Blue Pill" with SSD1306 128x64 OLED d
 
 ## 3D PCB Render
 
-![3D PCB View](hardware/midi_traffic_monitor_allegro_3d_view_isometric.PNG)
+![3D PCB View](hardware/midi_traffic_monitor_allegro_3d_view_isometric_Rev_A.PNG)
 
 
 ---
@@ -154,6 +154,11 @@ MIDI_Traffic_Monitor/
 - Console UART
     - Standard/typical 115,200 console interface
     - __io_putchar() defined in main.c to support printf debugging
+- Rev A - added hardware MIDI Thru/MIDI Out selection jumper to enable MIDI Out capability
+    - Input to 74LS04 is jumper-selectable:
+        - Route MIDI IN to MIDI Thru connector (for MIDI Thru functionality)
+        - Route STM32 USART1 Tx to MIDI Thru connector (for MIDI Out functionality)
+            - Note - MIDI Out requires separate (i.e. Sequencer) firmware
 
 ---
 

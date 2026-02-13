@@ -41,7 +41,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define UART_FIFO_SIZE          (512u)
+#define UART_FIFO_SIZE          (2048u)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -62,19 +62,20 @@ UART_HandleTypeDef huart2;
 /* USER CODE BEGIN PV */
 volatile uint32_t ms_counter = 0;
 
-volatile uint16_t fifo_MaxLevelReached; /* debug-oriented measure of FIFO utilization */
+volatile uint16_t fifo_count = 0; /* debug-oriented measure of FIFO utilization */
 uint8_t rxBuffer[80]; /* may not be necessary, single variable may be enough ... needs testing */
 volatile uint16_t headPointer = 0, tailPointer = 0; /* FIFO head and tail pointers */
 
-typedef struct {
+/* optimize uart fifo storage ... pack structure with 24-bit byte_timestamp  */
+typedef struct __attribute__((packed)) {
 	uint8_t  rx_byte;
-	uint32_t byte_timestamp;
+	uint32_t byte_timestamp : 24;
 } rxData;
 volatile rxData rxFIFO[UART_FIFO_SIZE]; /* Rx FIFO ... no rollover protection, older characters overwritten if FIFO fills */
 
 volatile uint32_t midi_timestamp = 0, midi_delta_timestamp = 0;
 uint16_t newest_message_encoder_value; /* encoder value for newest message ... will be used to automatically switch from SCROLL to LIVE mode */
-stc_midi *ptr_packet; /* TODO - do i need static? */
+stc_midi *ptr_packet;
 volatile bool timeoutFlag = false;
 
 /* USER CODE END PV */
@@ -174,10 +175,11 @@ int main(void)
   while (1)
   {
 	  /* check rxFIFO for incoming characters */
-	  if(tailPointer != headPointer) /* if true, new data is available */
+	  if(0 != fifo_count) /* if true, new data is available */
 	  {
 		  rx_data_timestamp = rxFIFO[tailPointer].byte_timestamp; /* retrieve timestamp from FIFO */
 		  rx_data = rxFIFO[tailPointer++].rx_byte; /* retrieve new character from FIFO */
+		  fifo_count--;
 		  if(tailPointer >= UART_FIFO_SIZE) /* manage FIFO pointer rollover */
 			  tailPointer = 0;
 
@@ -541,20 +543,10 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 	{
 		rxFIFO[headPointer].byte_timestamp = HAL_GetTick(); /* timestamp received byte */
 		rxFIFO[headPointer++].rx_byte = rxBuffer[0]; /* place received character from UART in FIFO */
+		fifo_count++;
 		if(headPointer >= UART_FIFO_SIZE) /* manage headPointer rollover (new arrivals will overwrite older) */
 			headPointer = 0;
 
-		/* calculate MAX FIFO level reached ... adjust formula based on rollover */
-		if(headPointer >= tailPointer) /* normal/easy calculation if headPointer is ahead of tailPointer */
-		{
-			if(headPointer - tailPointer > fifo_MaxLevelReached)
-				fifo_MaxLevelReached = headPointer - tailPointer;
-		}
-		else /* adjusted calculation if tailPointer is ahead of headPointer */
-		{
-			if(headPointer + UART_FIFO_SIZE - tailPointer > fifo_MaxLevelReached)
-				fifo_MaxLevelReached = headPointer + UART_FIFO_SIZE - tailPointer;
-		}
 		HAL_UART_Receive_IT(&huart1, rxBuffer, 1); /* restart UART Rx interrupt */
 	}
 }

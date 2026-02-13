@@ -4,7 +4,7 @@ MIDI packet monitor for the STM32F103C8T6 "Blue Pill" with SSD1306 128x64 OLED d
 
 ---
 
-## Table of Contents - [Product Sketch / Mock-Up](#product-sketch--mock-up) - [Features](#features) - [Hardware Requirements](#hardware-requirements) - [Schematic](#schematic) - [STM32 Blue Pill Pinout Configuration](#stm32-blue-pill-pinout-configuration) - [3D PCB Render](#3d-pcb-render) - [Project Structure](#project-structure) - [Building and Flashing](#building-and-flashing) - [STM32F103 Setup (CubeMX)](#stm32f103-setup-cubemx) - [Hardware](#hardware) - [Firmware Architecture](#firmware-architecture)
+## Table of Contents - [Product Sketch / Mock-Up](#product-sketch--mock-up) - [Features](#features) - [Hardware Requirements](#hardware-requirements) - [Schematic](#schematic) - [STM32 Blue Pill Pinout Configuration](#stm32-blue-pill-pinout-configuration) - [3D PCB Render](#3d-pcb-render) - [Project Structure](#project-structure) - [Performance Summary](#performance-summary) - [Building and Flashing](#building-and-flashing) - [STM32F103 Setup (CubeMX)](#stm32f103-setup-cubemx) - [Hardware](#hardware) - [Firmware Architecture](#firmware-architecture)
 
 
 # Product Sketch / Mock-Up
@@ -18,11 +18,12 @@ MIDI packet monitor for the STM32F103C8T6 "Blue Pill" with SSD1306 128x64 OLED d
 - **Live MIDI stream capture** via UART (31250 baud) with byte-arrival timestamping
 - **Scroll wheel navigation** with short-press/long-press actions (jump to newest/oldest)
 - **Active scroll bar animation** with position and rollover indication
-- **History buffer** of up to 700 raw MIDI packets (stored in SRAM)
-- **Real-time parsing** of MIDI notes and control messages
+- **History buffer** of 512 raw MIDI packets (stored in SRAM)
+    - ~2 1/2 minutes of capture at 200 beats/minute (BPM)
+- **Natural language parsing** of MIDI notes
 - **OLED display output** using 128 x 64, .96" SSD1306 over I2C
 - **Channel filter selector** with quick reset and session reinitialization support
-- **Efficient ISR-driven UART FIFO** (512 structures deep)
+- **Efficient ISR-driven UART FIFO** (2048 structures deep)
 - **Console UART** for debug messaging and session monitoring
 - **MIDI pass-through buffering** with activity LED
 
@@ -81,6 +82,36 @@ MIDI_Traffic_Monitor/
 2. Build the project (`Project > Build All`).
 3. Flash to target using ST-Link (`Run > Debug As > STM32 Cortex-M C/C++ Application`).
 4. Or flash the prebuilt image from `hex_image/` using STM32CubeProgrammer.
+
+---
+## Performance Summary
+| **Capture/storage statistics (calculated/actual)**   |       |        |              |              |
+| ------------------------------------------------------- | ----- | ------ | ------------ | ------------ |
+|                                             |       |        |              |              |
+| UART FIFO                                               | 2048  |        |              |              |
+| MIDI History                                            | 512   |        |              |              |
+|                                                         |       |        |              |              |
+| Tempo (BPM)                                             | 600   | 300    | 200          | 150          |
+| Tempo (msec)                                            | 100   | 200    | 300          | 400          |
+| Beats/second                                            | 10    | 5      | 3.33         | 2.5          |
+| Bytes/MIDI message                                      | 3     | 3      | 3            | 3            |
+| Bytes/second                                            | 30.00 | 15.00  | 10.00        | 7.50         |
+|                                                         |       |        |              |              |
+| **Single note (1 MIDI, 3 bytes):**                      |       |        |              |              |
+| UART FIFO fill time (no drain/calculated) – seconds                | 68.27 | 136.53 | 204.80       | 273.07       |
+| UART FIFO fill time (with drain) – empirically measured | 90.00 | 270.00 | \>14 minutes | \>30 minutes |
+| MIDI History (seconds)                                  | 51.20 | 102.40 | 153.60       | 204.80       |
+|                                                         |       |        |              |              |
+| **Chord Triad (3 MIDI, 9 bytes)**                       |       |        |              |              |
+| UART FIFO fill time (no drain/calculated) – seconds                | 22.76 | 45.51  | 68.27        | 91.02        |
+| UART FIFO fill time (with drain) – empirically measured | 28.00 | 60.00  | 102.00       | 150.00       |
+| MIDI History (seconds)                                  | 17.07 | 34.13  | 51.20        | 68.27        |
+|                                                         |       |        |              |              |
+| **Chord Triad + note_off (6 MIDI, 18 bytes)**           |       |        |              |              |
+| UART FIFO fill time (no drain/calculated) – seconds                | 11.38 | 22.76  | 34.13        | 45.51        |
+| UART FIFO fill time (with drain) – empirically measured | 14.00 | 28.00  | 43.00        | 62.00        |
+| MIDI History (seconds)                                  | 8.53  | 17.07  | 25.60        | 34.13        |
+
 
 ---
 
@@ -186,14 +217,16 @@ MIDI_Traffic_Monitor/
 - MIDI UART
     - Incoming bytes handled by ISR callback (HAL_UART_RxCpltCallback()) in main.c :
         - FIFO head/tail pointers managed in ISR callback
-        - MAX FIFO utilization calculated for debug and tuning
+        - FIFO count incremented by "producer" (decremented by "consumer" in main loop)
     - Rx byte and arrival timestamp stored in rxFIFO
-    - FIFO depth currently set to 512 records (based on available SRAM and tradeoff with MIDI packet history)
-    - Circular buffer ... no rollover protection but deep enough to avoid overwriting
-    - Background processing of incoming bytes ensures no MIDI data is missed while updating display or scrolling history
+    - FIFO depth set to 2048 records (based on available SRAM and tradeoff with MIDI packet history)
+        - `__attribute__`((packed)) used to condense FIFO structure
+        - Structure holds uint8_t rxByte and 24-bit HAL timestamp
+    - Circular buffer ... no rollover protection (newer arrivals overwrite older records) but deep enough to support MIDI History depth
+    - Background/interrupt-driven processing of incoming bytes ensures no MIDI data is missed while updating display or scrolling history
 
 - Console UART
-    - Add `__io_putchar()` in main.c to support printf debugging:
+    - `__io_putchar()` in main.c to support printf debugging:
         - int __io_putchar(int ch) {
     HAL_UART_Transmit(&huart2, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
     return ch;
@@ -213,8 +246,9 @@ MIDI_Traffic_Monitor/
             - Long = end current capture session and initialize new session
 
 - Simple main.c forevever loop:
-    - Checks FIFO head/tail pointers for MIDI data arrival
+    - Checks FIFO count for MIDI data arrival
         - Calls midi_build_packet(rx_data, rx_data_timestamp) in midi.c if new data is available
+        - Decrements FIFO count (consumer of circular buffer)
     - Checks midi_isPacketAvailable flag
         - Calls ui_process_midi_packet() in ui.c if MIDI packet has been assembled and available
     - Checks timeoutFlag flag (from TIM4 timeout timer ISR)
@@ -249,7 +283,7 @@ MIDI_Traffic_Monitor/
     - Handles scroll bar calculation and display screen drawing:
         - Last 3 pixels of active screen reserved for scroll bar
             - Color inverts to indicate rollover (i.e. overwriting of previous history)
-        - Last 2 pixels of Status Line reserved for background data arrival indication. Animated to indicate incoming MIDI activity while in scroll mode.
+        - Last 2 pixels of Status Line reserved for background data arrival indication. Animated to indicate background MIDI activity while in scroll mode.
         - Two drawing modes for scroll bar:
             - Percent - dynamically adjusts scroll bar height to percent of reference (either total session count or maximum size of history if rollover has occurred)
             - Absolute - places scroll bar at requested position with requested height

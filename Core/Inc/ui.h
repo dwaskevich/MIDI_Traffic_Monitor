@@ -26,7 +26,7 @@ typedef enum {
 } ScrollBarDimensionType;
 
 /* define number of storage pages for traffic history (limited by available SRAM) */
-#define NUMBER_PAGES    (700u)
+#define NUMBER_PAGES    (512u)
 
 extern uint16_t midi_total_count;
 

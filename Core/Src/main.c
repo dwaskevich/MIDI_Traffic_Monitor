@@ -41,7 +41,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define UART_FIFO_SIZE          (2048u)
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -62,7 +62,7 @@ UART_HandleTypeDef huart2;
 /* USER CODE BEGIN PV */
 volatile uint32_t ms_counter = 0;
 
-volatile uint16_t fifo_count = 0; /* debug-oriented measure of FIFO utilization */
+volatile uint16_t fifo_count = 0; /* FIFO utilization */
 uint8_t rxBuffer[80]; /* may not be necessary, single variable may be enough ... needs testing */
 volatile uint16_t headPointer = 0, tailPointer = 0; /* FIFO head and tail pointers */
 

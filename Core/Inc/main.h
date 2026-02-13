@@ -37,11 +37,19 @@ extern "C" {
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
 
+extern I2C_HandleTypeDef hi2c1;
+extern TIM_HandleTypeDef htim2;
+extern TIM_HandleTypeDef htim3;
+extern UART_HandleTypeDef huart1;
+extern UART_HandleTypeDef huart2;
+
+extern volatile uint16_t fifo_count;
+
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
 /* USER CODE BEGIN EC */
-
+#define UART_FIFO_SIZE          (2048u)
 /* USER CODE END EC */
 
 /* Exported macro ------------------------------------------------------------*/
@@ -53,12 +61,6 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
-extern I2C_HandleTypeDef hi2c1;
-extern TIM_HandleTypeDef htim2;
-extern TIM_HandleTypeDef htim3;
-extern UART_HandleTypeDef huart1;
-extern UART_HandleTypeDef huart2;
 
 /* USER CODE END EFP */
 

@@ -170,7 +170,7 @@ void ui_post_packet_to_display(stc_midi* ptr_packet)
 					ssd1306_FillRectangle(SSD1306_WIDTH - 2, 3, SSD1306_WIDTH, DISPLAY_DEFAULT_FONT.height - 2, White);
 				else
 					ssd1306_FillRectangle(SSD1306_WIDTH - 2, 0, SSD1306_WIDTH, DISPLAY_DEFAULT_FONT.height - 2, White);
-				ssd1306_UpdateScreen();
+//				ssd1306_UpdateScreen();
 			}
 			break;
 
@@ -183,12 +183,17 @@ void ui_post_packet_to_display(stc_midi* ptr_packet)
 				ssd1306_FillRectangle(SSD1306_WIDTH - 2, 3, SSD1306_WIDTH, DISPLAY_DEFAULT_FONT.height - 2, White);
 			else
 				ssd1306_FillRectangle(SSD1306_WIDTH - 2, 0, SSD1306_WIDTH, DISPLAY_DEFAULT_FONT.height - 2, White);
-			ssd1306_UpdateScreen();
+//			ssd1306_UpdateScreen();
 			break;
 
 		default:
 			break;
 	}
+
+	/* display horizontal fifo utilization bar */
+	ssd1306_DrawRectangle(0, SSD1306_HEIGHT - 1, fifo_count / (UART_FIFO_SIZE/SSD1306_WIDTH), SSD1306_HEIGHT - 1, White);
+	ssd1306_DrawRectangle(fifo_count / (UART_FIFO_SIZE/SSD1306_WIDTH), SSD1306_HEIGHT - 1, SSD1306_WIDTH - 4, SSD1306_HEIGHT - 1, Black);
+	ssd1306_UpdateScreen();
 }
 
 int16_t ui_get_filtered_record_index(int16_t index, uint16_t number_records_to_check, ScrollDirection direction)

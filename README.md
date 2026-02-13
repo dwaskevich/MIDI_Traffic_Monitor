@@ -16,14 +16,18 @@ MIDI packet monitor for the STM32F103C8T6 "Blue Pill" with SSD1306 128x64 OLED d
 ## Features
 
 - **Live MIDI stream capture** via UART (31250 baud) with byte-arrival timestamping
-- **Scroll wheel navigation** with short-press/long-press actions (jump to newest/oldest)
-- **Active scroll bar animation** with position and rollover indication
-- **History buffer** of 512 raw MIDI packets (stored in SRAM)
+    - 2048 byte FIFO ensures integrity of capture (FIFO deeper than MIDI history storage)
+    - FIFO utilization displayed as horizontal bar at bottom of OLED display
+- **MIDI history array** of 512 raw MIDI packets (stored in SRAM)
     - ~2 1/2 minutes of capture at 200 beats/minute (BPM)
-- **Natural language parsing** of MIDI notes
+- **Scroll wheel history navigation** with short-press/long-press actions (jump to newest/oldest)
+- **Active scroll bar with animation** visually indicates current position in MIDI history
+    - Also indicates occupied MIDI history and rollover
+
+- **Natural language parsing** of MIDI notes to OLED display
 - **OLED display output** using 128 x 64, .96" SSD1306 over I2C
-- **Channel filter selector** with quick reset and session reinitialization support
-- **Efficient ISR-driven UART FIFO** (2048 structures deep)
+- **Channel filter selector** with quick, short-press "ALL Channels" reset and long-press session reinitialization
+- **Efficient ISR-driven UART FIFO** (2048 bytes deep)
 - **Console UART** for debug messaging and session monitoring
 - **MIDI pass-through buffering** with activity LED
 
@@ -99,17 +103,17 @@ MIDI_Traffic_Monitor/
 |                                                         |       |        |              |              |
 | **Single note (1 MIDI, 3 bytes):**                      |       |        |              |              |
 | UART FIFO fill time (no drain/calculated) – seconds                | 68.27 | 136.53 | 204.80       | 273.07       |
-| UART FIFO fill time (with drain) – empirically measured | 90.00 | 270.00 | \>14 minutes | \>30 minutes |
+| UART FIFO fill time (with drain/actual) – empirically measured | 90.00 | 270.00 | \>14 minutes | \>30 minutes |
 | MIDI History (seconds)                                  | 51.20 | 102.40 | 153.60       | 204.80       |
 |                                                         |       |        |              |              |
 | **Chord Triad (3 MIDI, 9 bytes)**                       |       |        |              |              |
 | UART FIFO fill time (no drain/calculated) – seconds                | 22.76 | 45.51  | 68.27        | 91.02        |
-| UART FIFO fill time (with drain) – empirically measured | 28.00 | 60.00  | 102.00       | 150.00       |
+| UART FIFO fill time (with drain/actual) – empirically measured | 28.00 | 60.00  | 102.00       | 150.00       |
 | MIDI History (seconds)                                  | 17.07 | 34.13  | 51.20        | 68.27        |
 |                                                         |       |        |              |              |
 | **Chord Triad + note_off (6 MIDI, 18 bytes)**           |       |        |              |              |
 | UART FIFO fill time (no drain/calculated) – seconds                | 11.38 | 22.76  | 34.13        | 45.51        |
-| UART FIFO fill time (with drain) – empirically measured | 14.00 | 28.00  | 43.00        | 62.00        |
+| UART FIFO fill time (with drain/actual) – empirically measured | 14.00 | 28.00  | 43.00        | 62.00        |
 | MIDI History (seconds)                                  | 8.53  | 17.07  | 25.60        | 34.13        |
 
 
@@ -223,6 +227,7 @@ MIDI_Traffic_Monitor/
         - `__attribute__`((packed)) used to condense FIFO structure
         - Structure holds uint8_t rxByte and 24-bit HAL timestamp
     - Circular buffer ... no rollover protection (newer arrivals overwrite older records) but deep enough to support MIDI History depth
+        - FIFO utilization displayed as horizontal bar at bottom of OLED dispaly
     - Background/interrupt-driven processing of incoming bytes ensures no MIDI data is missed while updating display or scrolling history
 
 - Console UART
@@ -250,7 +255,7 @@ MIDI_Traffic_Monitor/
         - Calls midi_build_packet(rx_data, rx_data_timestamp) in midi.c if new data is available
         - Decrements FIFO count (consumer of circular buffer)
     - Checks midi_isPacketAvailable flag
-        - Calls ui_process_midi_packet() in ui.c if MIDI packet has been assembled and available
+        - Calls ui_process_midi_packet() in ui.c if MIDI packet has been assembled and is available
     - Checks timeoutFlag flag (from TIM4 timeout timer ISR)
         - Calls ui_fill_display() in ui.c if true
 
@@ -287,6 +292,8 @@ MIDI_Traffic_Monitor/
         - Two drawing modes for scroll bar:
             - Percent - dynamically adjusts scroll bar height to percent of reference (either total session count or maximum size of history if rollover has occurred)
             - Absolute - places scroll bar at requested position with requested height
+    - Handles FIFO utilization calculation and display
+        - Last pixel row of OLED screen reserved for horizontal FIFO utilization indication
 
 - ssd1306.c
     - Library from https://github.com/afiskon/stm32-ssd1306/tree/master

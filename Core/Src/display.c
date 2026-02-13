@@ -161,7 +161,7 @@ int16_t display_channel(uint8_t channel)
 void display_clear_page(SSD1306_COLOR color)
 {
 //	ssd1306_FillRectangle(0, line_height, SSD1306_WIDTH, SSD1306_HEIGHT, Black);
-	ssd1306_FillRectangle(0, line_height, SSD1306_WIDTH - 4, SSD1306_HEIGHT, Black);
+	ssd1306_FillRectangle(0, line_height, SSD1306_WIDTH - 4, SSD1306_HEIGHT - 2, Black); /* "-2" to preserve FIFO level at bottom */
 }
 
 void display_draw_scroll_arrow(ScrollDirection arrow_direction)

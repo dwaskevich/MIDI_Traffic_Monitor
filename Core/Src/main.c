@@ -541,9 +541,15 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
 	if (huart->Instance == USART1)
 	{
+		fifo_count++;
+		if(fifo_count > UART_FIFO_SIZE) /* check for FIFO rollover */
+		{
+			tailPointer = headPointer; /* fast forward tail pointer to catch up with head pointer */
+			fifo_count = UART_FIFO_SIZE + 1; /* clamp count to prevent unnecessary "catch-up" latency on UI */
+		}
 		rxFIFO[headPointer].byte_timestamp = HAL_GetTick(); /* timestamp received byte */
 		rxFIFO[headPointer++].rx_byte = rxBuffer[0]; /* place received character from UART in FIFO */
-		fifo_count++;
+
 		if(headPointer >= UART_FIFO_SIZE) /* manage headPointer rollover (new arrivals will overwrite older) */
 			headPointer = 0;
 

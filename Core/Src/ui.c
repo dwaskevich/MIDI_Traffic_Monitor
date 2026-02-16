@@ -26,6 +26,8 @@
 #define SCROLL_BAR_MAX_VERTICAL_SIZE  (SSD1306_HEIGHT - SCROLL_BAR_TOP_PIXEL_POSITION)
 #define SCROLL_BAR_MAX_POSITION	(SSD1306_HEIGHT - 7)
 
+#define ENABLE_CONSOLE_TEST 0
+
 /* macro to calculate true mathematical modulo, not c library remainder */
 #define MODULO(x, m) ((((x) % (m)) + (m)) % (m))
 
@@ -144,8 +146,8 @@ void ui_post_packet_to_display(stc_midi* ptr_packet)
 			float height = (float)MODULO(capture_session.midi_total_count, NUMBER_PAGES) / NUMBER_PAGES;
 			ui_draw_scroll_bar(height, 0, PERCENT, (capture_session.number_rollovers + 1) % 2, capture_session.number_rollovers);
 
-			/* post to display if channel filter matches */
-			if(filter_getChannel() == 0 || filter_getChannel() == ptr_packet->channel)
+			/* post to display if channel filter matches and uart FIFO is less than 12.5% full */
+			if((fifo_count < UART_FIFO_SIZE >> 3) && (filter_getChannel() == 0 || filter_getChannel() == ptr_packet->channel))
 			{
 				/* put relative midi session timestamp on status line */
 				uint32_t midi_delta_timestamp = session_getDeltaTime(ptr_packet->time_stamp);
@@ -153,6 +155,22 @@ void ui_post_packet_to_display(stc_midi* ptr_packet)
 
 				if(FIRST_DISPLAY_LINE == display_line_pointer) /* display is full, create new blank page */
 					display_clear_page(Black);
+
+#if ENABLE_CONSOLE_TEST
+				const char crlf[] = {"\r\n"};
+				char *temp;
+				temp = midi_process_message(ptr_packet->running_status, ptr_packet->data[0], ptr_packet->data[1]);
+				display_string(temp, display_line_pointer, 0, White, true);
+				uint8_t i;
+				for(i = 0; i < 20; i++)
+				{
+					if(0 == temp[i])
+						break;
+				}
+				HAL_UART_Transmit(&huart2, (uint8_t *)temp, i, 100); /* echo midi traffic to console for testing */
+//				printf(" .. fifo_count = %d\t%d", fifo_count, (uint16_t)rxFIFO[tailPointer].byte_timestamp);
+				HAL_UART_Transmit(&huart2, (uint8_t *)crlf, 2, 100);
+#endif
 
 				/* write most recent history record to current line pointer of display */
 				display_string(midi_process_message(ptr_packet->running_status, ptr_packet->data[0], ptr_packet->data[1]), display_line_pointer, 0, White, true);

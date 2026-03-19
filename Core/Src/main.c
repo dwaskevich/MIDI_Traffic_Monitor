@@ -550,6 +550,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 		rxFIFO[headPointer].byte_timestamp = HAL_GetTick(); /* timestamp received byte */
 		rxFIFO[headPointer++].rx_byte = rxBuffer[0]; /* place received character from UART in FIFO */
 
+//		HAL_UART_Transmit(&huart2, rxBuffer, 1, HAL_MAX_DELAY); /* echo raw data to console */
+
 		if(headPointer >= UART_FIFO_SIZE) /* manage headPointer rollover (new arrivals will overwrite older) */
 			headPointer = 0;
 
